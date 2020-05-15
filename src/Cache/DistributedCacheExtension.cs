@@ -27,7 +27,7 @@ namespace Vasont.AspnetCore.ServiceStackRedis.Cache
         /// <returns>Returns a value by key</returns>
         public static T Get<T>(this IDistributedCache cache, string key)
         {
-            T result;
+            T result = default;
 
             switch (cache) 
             {
@@ -35,7 +35,13 @@ namespace Vasont.AspnetCore.ServiceStackRedis.Cache
                     result = distributedCache.Get<T>(key);
                     break;
                 case MemoryDistributedCache memoryDistributedCache:
-                    result = JsonConvert.DeserializeObject<T>(Encoding.UTF8.GetString(memoryDistributedCache.Get(key)));
+                    byte[] bytes = memoryDistributedCache.Get(key);
+
+                    if (bytes != null)
+                    {
+                        result = JsonConvert.DeserializeObject<T>(Encoding.UTF8.GetString(bytes));
+                    }
+
                     break;
                 default:
                     throw new InvalidOperationException();
