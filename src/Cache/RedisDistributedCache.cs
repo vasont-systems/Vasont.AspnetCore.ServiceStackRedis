@@ -6,6 +6,7 @@
 namespace Vasont.AspnetCore.ServiceStackRedis.Cache
 {
     using System;
+    using System.Collections.Generic;
     using System.Text;
     using System.Threading;
     using System.Threading.Tasks;
@@ -330,6 +331,43 @@ namespace Vasont.AspnetCore.ServiceStackRedis.Cache
         private string GetExpirationKey(string key)
         {
             return key + $"-{nameof(DistributedCacheEntryOptions)}";
+        }
+
+        /// <summary>
+        /// This method is used for generation expiration key
+        /// </summary>
+        /// <param name="pattern">Contains a key pattern</param>
+        /// <param name="pageSize">Contains a page size for result</param>
+        /// <returns>Returns the list of keys by pattern and page size</returns>
+        public IEnumerable<string> FindKeys(string pattern, int pageSize = 1000)
+        {
+            if (pattern == null)
+            {
+                throw new ArgumentNullException(nameof(pattern));
+            }
+
+            using (var client = this.redisManager.GetClient())
+            {
+                return client.ScanAllKeys(pattern, pageSize);
+            }
+        }
+
+        /// <summary>
+        /// This method is used for generation expiration key
+        /// </summary>
+        /// <param name="key">Contains a key</param>
+        /// <returns>Returns the value indicating is key exists in storage</returns>
+        public bool ContainsKey(string key)
+        {
+            if (key == null)
+            {
+                throw new ArgumentNullException(nameof(key));
+            }
+
+            using (var client = this.redisManager.GetClient())
+            {
+                return client.ContainsKey(key);
+            }
         }
 
         #endregion
