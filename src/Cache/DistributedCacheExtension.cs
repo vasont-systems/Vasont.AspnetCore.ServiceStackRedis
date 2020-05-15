@@ -6,6 +6,7 @@
 namespace Vasont.AspnetCore.ServiceStackRedis.Cache
 {
     using System;
+    using System.Collections.Generic;
     using System.Text;
     using System.Threading;
     using System.Threading.Tasks;
@@ -26,7 +27,7 @@ namespace Vasont.AspnetCore.ServiceStackRedis.Cache
         /// <returns>Returns a value by key</returns>
         public static T Get<T>(this IDistributedCache cache, string key)
         {
-            T result;
+            T result = default;
 
             switch (cache) 
             {
@@ -34,7 +35,13 @@ namespace Vasont.AspnetCore.ServiceStackRedis.Cache
                     result = distributedCache.Get<T>(key);
                     break;
                 case MemoryDistributedCache memoryDistributedCache:
-                    result = JsonConvert.DeserializeObject<T>(Encoding.UTF8.GetString(memoryDistributedCache.Get(key)));
+                    byte[] bytes = memoryDistributedCache.Get(key);
+
+                    if (bytes != null)
+                    {
+                        result = JsonConvert.DeserializeObject<T>(Encoding.UTF8.GetString(bytes));
+                    }
+
                     break;
                 default:
                     throw new InvalidOperationException();
@@ -93,6 +100,51 @@ namespace Vasont.AspnetCore.ServiceStackRedis.Cache
         public static Task SetAsync<T>(this IDistributedCache cache, string key, T value, DistributedCacheEntryOptions options, CancellationToken token = default)
         {
             return Task.Run(() => Set<T>(cache, key, value, options), token);
+        }
+
+        /// <summary>
+        /// This method is used to get the list of keys in storage
+        /// </summary>
+        /// <param name="cache">Contains a cache storage</param>
+        /// <param name="pattern">Contains a key pattern</param>
+        /// <param name="pageSize">Contains a page size for result</param>
+        /// <returns>Returns the list of keys by pattern and page size</returns>
+        public static IEnumerable<string> FindKeys(this IDistributedCache cache, string pattern, int pageSize = 1000)
+        {
+            IEnumerable<string> result;
+
+            switch (cache)
+            {
+                case RedisDistributedCache distributedCache:
+                    result = distributedCache.FindKeys(pattern, pageSize);
+                    break;
+                default:
+                    throw new InvalidOperationException();
+            }
+
+            return result;
+        }
+
+        /// <summary>
+        /// This method is used to get the list of keys in storage
+        /// </summary>
+        /// <param name="cache">Contains a cache storage</param>
+        /// <param name="key">Contains a key</param>
+        /// <returns>Returns the value indicating is key exists in storage</returns>
+        public static bool ContainsKey(this IDistributedCache cache, string key)
+        {
+            bool result;
+
+            switch (cache)
+            {
+                case RedisDistributedCache distributedCache:
+                    result = distributedCache.ContainsKey(key);
+                    break;
+                default:
+                    throw new InvalidOperationException();
+            }
+
+            return result;
         }
     }
 }
