@@ -317,6 +317,10 @@ namespace Vasont.AspnetCore.ServiceStackRedis.Cache
             }
             else if (options.AbsoluteExpiration.HasValue)
             {
+                result = (int)(options.AbsoluteExpiration.Value - DateTimeOffset.Now).TotalSeconds;
+            }
+            else if (options.AbsoluteExpirationRelativeToNow.HasValue)
+            {
                 result = (int)options.AbsoluteExpirationRelativeToNow.Value.TotalSeconds;
             }
 
