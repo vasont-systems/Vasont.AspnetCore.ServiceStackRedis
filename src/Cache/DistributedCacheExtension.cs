@@ -71,6 +71,18 @@ namespace Vasont.AspnetCore.ServiceStackRedis.Cache
         /// <param name="cache">Contains a cache storage</param>
         /// <param name="key">Contains a cache storage key</param>
         /// <param name="value">Contains a value to be cached</param>
+        public static void Set<T>(this IDistributedCache cache, string key, T value)
+        {
+            Set(cache, key, value, new DistributedCacheEntryOptions());
+        }
+
+        /// <summary>
+        /// This method is used to set cache value by key
+        /// </summary>
+        /// <typeparam name="T">Contains the type of content to set.</typeparam>
+        /// <param name="cache">Contains a cache storage</param>
+        /// <param name="key">Contains a cache storage key</param>
+        /// <param name="value">Contains a value to be cached</param>
         /// <param name="options">Contains options for caching</param>
         public static void Set<T>(this IDistributedCache cache, string key, T value, DistributedCacheEntryOptions options)
         {
@@ -85,6 +97,20 @@ namespace Vasont.AspnetCore.ServiceStackRedis.Cache
                 default:
                     throw new InvalidOperationException();
             }
+        }
+
+        /// <summary>
+        /// This method is used to set cache value by key
+        /// </summary>
+        /// <typeparam name="T">Contains the type of content to set.</typeparam>
+        /// <param name="cache">Contains a cache storage</param>
+        /// <param name="key">Contains a cache storage key</param>
+        /// <param name="value">Contains a value to be cached</param>
+        /// <param name="token">Contains a cancellation token.</param>
+        /// <returns>Returns the task to execute.</returns>
+        public static Task SetAsync<T>(this IDistributedCache cache, string key, T value, CancellationToken token = default)
+        {
+            return Task.Run(() => Set(cache, key, value), token);
         }
 
         /// <summary>
