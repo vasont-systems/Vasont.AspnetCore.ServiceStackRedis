@@ -12,6 +12,7 @@ namespace Vasont.AspnetCore.ServiceStackRedis.Cache
     using System.Threading.Tasks;
     using Microsoft.Extensions.Caching.Distributed;
     using ServiceStack.Redis;
+    using ServiceStack.Redis.Generic;
 
     /// <summary>
     /// This class implements <see cref="IDistributedCache"/> interface with using Redis server
@@ -126,35 +127,7 @@ namespace Vasont.AspnetCore.ServiceStackRedis.Cache
         /// <param name="options">Contains options for caching</param>
         public void Set(string key, byte[] value, DistributedCacheEntryOptions options)
         {
-            if (string.IsNullOrWhiteSpace(key))
-            {
-                throw new ArgumentNullException(nameof(key));
-            }
-
-            if (value == null)
-            {
-                throw new ArgumentNullException(nameof(value));
-            }
-
-            if (options == null)
-            {
-                throw new ArgumentNullException(nameof(options));
-            }
-
-            using (var client = this.redisManager.GetClient() as IRedisNativeClient)
-            {
-                var expireInSeconds = this.GetExpireInSeconds(options);
-
-                if (expireInSeconds > 0)
-                {
-                    client.SetEx(key, expireInSeconds, value);
-                    client.SetEx(this.GetExpirationKey(key), expireInSeconds, Encoding.UTF8.GetBytes(expireInSeconds.ToString()));
-                }
-                else
-                {
-                    client.Set(key, value);
-                }
-            }
+            this.Set<byte[]>(key, value, options);
         }
 
         /// <summary>
@@ -183,16 +156,15 @@ namespace Vasont.AspnetCore.ServiceStackRedis.Cache
 
             using (var client = this.redisManager.GetClient())
             {
-                var typedClient = client.As<T>();
                 var expireInSeconds = this.GetExpireInSeconds(options);
                 
                 if (expireInSeconds > 0)
                 {
-                    typedClient.SetValue(key, value, TimeSpan.FromSeconds(expireInSeconds));
+                    client.Set(key, value, TimeSpan.FromSeconds(expireInSeconds));
                 }
                 else
                 {
-                    typedClient.SetValue(key, value);
+                    client.Set(key, value);
                 }
             }
         }
@@ -207,6 +179,7 @@ namespace Vasont.AspnetCore.ServiceStackRedis.Cache
         /// <returns>Returns the task to execute.</returns>
         public Task SetAsync(string key, byte[] value, DistributedCacheEntryOptions options, CancellationToken token = default)
         {
+            token.ThrowIfCancellationRequested();
             return Task.Run(() => this.Set(key, value, options), token);
         }
 
@@ -230,28 +203,7 @@ namespace Vasont.AspnetCore.ServiceStackRedis.Cache
         /// <param name="key">Contains a cache storage key</param>
         public void Refresh(string key)
         {
-            if (string.IsNullOrWhiteSpace(key))
-            {
-                throw new ArgumentNullException(nameof(key));
-            }
-
-            using (var client = this.redisManager.GetClient() as IRedisNativeClient)
-            {
-                if (client.Exists(key) == 1)
-                {
-                    byte[] value = client.Get(key);
-
-                    if (value != null)
-                    {
-                        var expirationValue = client.Get(this.GetExpirationKey(key));
-
-                        if (expirationValue != null)
-                        {
-                            client.Expire(key, int.Parse(Encoding.UTF8.GetString(expirationValue)));
-                        }
-                    }
-                }
-            }
+            // TODO: Implement Sliding expiration
         }
 
         /// <summary>
@@ -262,11 +214,6 @@ namespace Vasont.AspnetCore.ServiceStackRedis.Cache
         /// <returns>Returns the task to execute.</returns>
         public Task RefreshAsync(string key, CancellationToken token = default)
         {
-            if (string.IsNullOrWhiteSpace(key))
-            {
-                throw new ArgumentNullException(nameof(key));
-            }
-
             return Task.Run(() => this.Refresh(key), token);
         }
 
@@ -281,9 +228,9 @@ namespace Vasont.AspnetCore.ServiceStackRedis.Cache
                 throw new ArgumentNullException(nameof(key));
             }
 
-            using (var client = this.redisManager.GetClient() as IRedisNativeClient)
+            using (var client = this.redisManager.GetClient())
             {
-                client.Del(key);
+                client.Remove(key);
             }
         }
 
@@ -298,44 +245,6 @@ namespace Vasont.AspnetCore.ServiceStackRedis.Cache
             return Task.Run(() => this.Remove(key), token);
         }
 
-        #endregion
-
-        #region Private Methods
-
-        /// <summary>
-        /// This method is used to get expiration value in seconds
-        /// </summary>
-        /// <param name="options">Contains the distributed cache options.</param>
-        /// <returns>Returns the expiration in seconds.</returns>
-        private int GetExpireInSeconds(DistributedCacheEntryOptions options)
-        {
-            int result = 0;
-
-            if (options.SlidingExpiration.HasValue)
-            {
-                result = (int)options.SlidingExpiration.Value.TotalSeconds;
-            }
-            else if (options.AbsoluteExpiration.HasValue)
-            {
-                result = (int)(options.AbsoluteExpiration.Value - DateTimeOffset.Now).TotalSeconds;
-            }
-            else if (options.AbsoluteExpirationRelativeToNow.HasValue)
-            {
-                result = (int)options.AbsoluteExpirationRelativeToNow.Value.TotalSeconds;
-            }
-
-            return result;
-        }
-
-        /// <summary>
-        /// This method is used for generation expiration key
-        /// </summary>
-        /// <param name="key">Contains a key</param>
-        /// <returns>Returns expiration key</returns>
-        private string GetExpirationKey(string key)
-        {
-            return key + $"-{nameof(DistributedCacheEntryOptions)}";
-        }
 
         /// <summary>
         /// This method is used for generation expiration key
@@ -372,6 +281,35 @@ namespace Vasont.AspnetCore.ServiceStackRedis.Cache
             {
                 return client.ContainsKey(key);
             }
+        }
+
+        #endregion
+
+        #region Private Methods
+
+        /// <summary>
+        /// This method is used to get expiration value in seconds
+        /// </summary>
+        /// <param name="options">Contains the distributed cache options.</param>
+        /// <returns>Returns the expiration in seconds.</returns>
+        private int GetExpireInSeconds(DistributedCacheEntryOptions options)
+        {
+            int result = 0;
+
+            if (options.SlidingExpiration.HasValue)
+            {
+                result = (int)options.SlidingExpiration.Value.TotalSeconds;
+            }
+            else if (options.AbsoluteExpiration.HasValue)
+            {
+                result = (int)(options.AbsoluteExpiration.Value - DateTimeOffset.Now).TotalSeconds;
+            }
+            else if (options.AbsoluteExpirationRelativeToNow.HasValue)
+            {
+                result = (int)options.AbsoluteExpirationRelativeToNow.Value.TotalSeconds;
+            }
+
+            return result;
         }
 
         #endregion
