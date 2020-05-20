@@ -10,11 +10,11 @@
     <RepositoryUrl>https://github.com/vasont-systems/Vasont.AspnetCore.ServiceStackRedis</RepositoryUrl>
     <RepositoryType>git</RepositoryType>
     <PackageTags>Cache</PackageTags>
-    <PackageReleaseNotes>Fix getting absolute expiration time value</PackageReleaseNotes>
+    <PackageReleaseNotes>Removed setting extra items with expiration date</PackageReleaseNotes>
     <PackageProjectUrl>https://github.com/vasont-systems/Vasont.AspnetCore.ServiceStackRedis</PackageProjectUrl>
     <Copyright>Copyright (c) 2020, GlobalLink Vasont.</Copyright>
     <PackageLicenseExpression>Apache-2.0</PackageLicenseExpression>
-    <Version>1.1.1</Version>
+    <Version>1.1.2</Version>
   </PropertyGroup>
 
   <ItemGroup>
