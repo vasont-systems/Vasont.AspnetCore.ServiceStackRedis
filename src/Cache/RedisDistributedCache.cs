@@ -13,6 +13,7 @@ namespace Vasont.AspnetCore.ServiceStackRedis.Cache
     using Microsoft.Extensions.Caching.Distributed;
     using ServiceStack.Redis;
     using ServiceStack.Redis.Generic;
+    using Vasont.AspnetCore.ServiceStackRedis.Models;
 
     /// <summary>
     /// This class implements <see cref="IDistributedCache"/> interface with using Redis server
@@ -50,22 +51,7 @@ namespace Vasont.AspnetCore.ServiceStackRedis.Cache
         /// <returns>Returns a value by key</returns>
         public byte[] Get(string key)
         {
-            byte[] result = null;
-
-            if (string.IsNullOrWhiteSpace(key))
-            {
-                throw new ArgumentNullException(nameof(key));
-            }
-
-            using (var client = this.redisManager.GetClient() as IRedisNativeClient)
-            {
-                if (client.Exists(key) == 1)
-                {
-                    result = client.Get(key);
-                }
-            }
-
-            return result;
+            return Get<byte[]>(key);
         }
 
         /// <summary>
@@ -76,7 +62,7 @@ namespace Vasont.AspnetCore.ServiceStackRedis.Cache
         /// <returns>Returns a value by key</returns>
         public T Get<T>(string key)
         {
-            T result = default;
+            RedisDistributedCacheEntry<T> entry = null;
 
             if (string.IsNullOrWhiteSpace(key))
             {
@@ -87,11 +73,25 @@ namespace Vasont.AspnetCore.ServiceStackRedis.Cache
             {
                 if (client.ContainsKey(key))
                 {
-                    result = client.Get<T>(key);
+                    entry = client.Get<RedisDistributedCacheEntry<T>>(key);
+
+                    if (entry != null)
+                    {
+                        if (this.CheckExpired(entry))
+                        {
+                            client.ExpireEntryIn(key, TimeSpan.Zero);
+                            entry = null;
+                        }
+                        else
+                        {
+                            entry.LastAccessed = DateTimeOffset.UtcNow;
+                            client.Set(key, entry);
+                        }
+                    }
                 }
             }
 
-            return result;
+            return entry != null ? entry.Value : default;
         }
 
         /// <summary>
@@ -156,16 +156,9 @@ namespace Vasont.AspnetCore.ServiceStackRedis.Cache
 
             using (var client = this.redisManager.GetClient())
             {
-                var expireInSeconds = this.GetExpireInSeconds(options);
+                var entry = new RedisDistributedCacheEntry<T> { Value = value, AbsoluteExpiration = options.AbsoluteExpiration, SlidingExpiration = options.SlidingExpiration, LastAccessed = DateTimeOffset.UtcNow};
                 
-                if (expireInSeconds > 0)
-                {
-                    client.Set(key, value, TimeSpan.FromSeconds(expireInSeconds));
-                }
-                else
-                {
-                    client.Set(key, value);
-                }
+                client.Set(key, entry);
             }
         }
 
@@ -203,7 +196,18 @@ namespace Vasont.AspnetCore.ServiceStackRedis.Cache
         /// <param name="key">Contains a cache storage key</param>
         public void Refresh(string key)
         {
-            // TODO: Implement Sliding expiration
+            using (var client = this.redisManager.GetClient())
+            {
+                if (client.ContainsKey(key))
+                {
+                    var entry = client.Get<RedisDistributedCacheEntry>(key);
+
+                    if (this.CheckExpired(entry))
+                    {
+                        client.ExpireEntryIn(key, TimeSpan.Zero);
+                    }
+                }
+            }
         }
 
         /// <summary>
@@ -285,28 +289,28 @@ namespace Vasont.AspnetCore.ServiceStackRedis.Cache
 
         #endregion
 
-        #region Private Methods
+        #region Private methods
 
         /// <summary>
-        /// This method is used to get expiration value in seconds
+        /// This method is used for checking is entry expired
         /// </summary>
-        /// <param name="options">Contains the distributed cache options.</param>
-        /// <returns>Returns the expiration in seconds.</returns>
-        private int GetExpireInSeconds(DistributedCacheEntryOptions options)
+        /// <param name="entry">Contains the cache entry</param>
+        /// <returns>Returns a value indicating is the entry expired and should be removed from the cache</returns>
+        private bool CheckExpired(RedisDistributedCacheEntry entry)
         {
-            int result = 0;
+            bool result = false;
 
-            if (options.SlidingExpiration.HasValue)
+            if (entry.SlidingExpiration.HasValue)
             {
-                result = (int)options.SlidingExpiration.Value.TotalSeconds;
+                entry.AbsoluteExpiration = (entry.LastAccessed ?? DateTimeOffset.UtcNow).Add(entry.SlidingExpiration.Value);
             }
-            else if (options.AbsoluteExpiration.HasValue)
+
+            if (entry.AbsoluteExpiration.HasValue)
             {
-                result = (int)(options.AbsoluteExpiration.Value - DateTimeOffset.Now).TotalSeconds;
-            }
-            else if (options.AbsoluteExpirationRelativeToNow.HasValue)
-            {
-                result = (int)options.AbsoluteExpirationRelativeToNow.Value.TotalSeconds;
+                if (entry.AbsoluteExpiration.Value < DateTimeOffset.Now)
+                {
+                    result = true;
+                }
             }
 
             return result;
