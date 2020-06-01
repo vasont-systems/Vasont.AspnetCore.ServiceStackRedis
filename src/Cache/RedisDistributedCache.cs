@@ -51,7 +51,7 @@ namespace Vasont.AspnetCore.ServiceStackRedis.Cache
         /// <returns>Returns a value by key</returns>
         public byte[] Get(string key)
         {
-            return Get<byte[]>(key);
+            return this.Get<byte[]>(key);
         }
 
         /// <summary>
@@ -149,7 +149,7 @@ namespace Vasont.AspnetCore.ServiceStackRedis.Cache
 
             var creationTime = DateTimeOffset.UtcNow;
 
-            var absoluteExpiration = GetAbsoluteExpiration(creationTime, options);
+            var absoluteExpiration = this.GetAbsoluteExpiration(creationTime, options);
 
             using (var client = this.redisManager.GetClient())
             {
@@ -160,8 +160,7 @@ namespace Vasont.AspnetCore.ServiceStackRedis.Cache
                                     SlidingExpiration = options.SlidingExpiration?.Ticks
                             };
 
-
-                var expiresIn = GetExpirationInSeconds(creationTime, absoluteExpiration, options);
+                var expiresIn = this.GetExpirationInSeconds(creationTime, absoluteExpiration, options);
 
                 if (expiresIn.HasValue)
                 {
@@ -214,10 +213,9 @@ namespace Vasont.AspnetCore.ServiceStackRedis.Cache
                 {
                     var entry = client.Get<RedisDistributedCacheEntry>(key);
 
-                    MapMetadata(entry, out DateTimeOffset? absoluteExpiration, out TimeSpan? slidingExpiration);
+                    this.MapMetadata(entry, out DateTimeOffset? absoluteExpiration, out TimeSpan? slidingExpiration);
 
                     // Note Refresh has no effect if there is just an absolute expiration (or neither).
-
                     if (slidingExpiration.HasValue)
                     {
                         TimeSpan expiration;
@@ -276,7 +274,6 @@ namespace Vasont.AspnetCore.ServiceStackRedis.Cache
         {
             return Task.Run(() => this.Remove(key), token);
         }
-
 
         /// <summary>
         /// This method is used for generation expiration key
