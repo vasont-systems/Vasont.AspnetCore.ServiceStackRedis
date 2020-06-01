@@ -23,16 +23,11 @@ namespace Vasont.AspnetCore.ServiceStackRedis.Models
         /// <summary>
         /// Gets or sets sliding expiration value
         /// </summary>
-        public TimeSpan? SlidingExpiration { get; set; }
+        public long? SlidingExpiration { get; set; }
 
         /// <summary>
         /// Gets or sets absolute expiration time
         /// </summary>
-        public DateTimeOffset? AbsoluteExpiration { get; set; }
-
-        /// <summary>
-        /// Gets or sets last accessed date
-        /// </summary>
-        public DateTimeOffset? LastAccessed { get; set; }
+        public long? AbsoluteExpiration { get; set; }
     }
 }
