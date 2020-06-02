@@ -39,7 +39,7 @@ namespace Vasont.AspnetCore.ServiceStackRedis
         /// This method is used to initialize Service Stack Redis distributed cache
         /// </summary>
         /// <param name="services">Contains a service collection</param>
-        /// <param name="options">Contains the service stack options used to configure the singlton redis clients manager instance.</param>
+        /// <param name="options">Contains the service stack options used to configure the singleton redis clients manager instance.</param>
         public static void AddServiceStackRedis(this IServiceCollection services, ServiceStackRedisOptions options)
         {
             if (options == null)

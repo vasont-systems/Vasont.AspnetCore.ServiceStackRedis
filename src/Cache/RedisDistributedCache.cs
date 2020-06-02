@@ -13,6 +13,7 @@ namespace Vasont.AspnetCore.ServiceStackRedis.Cache
     using Microsoft.Extensions.Caching.Distributed;
     using ServiceStack.Redis;
     using ServiceStack.Redis.Generic;
+    using Vasont.AspnetCore.ServiceStackRedis.Models;
 
     /// <summary>
     /// This class implements <see cref="IDistributedCache"/> interface with using Redis server
@@ -50,22 +51,7 @@ namespace Vasont.AspnetCore.ServiceStackRedis.Cache
         /// <returns>Returns a value by key</returns>
         public byte[] Get(string key)
         {
-            byte[] result = null;
-
-            if (string.IsNullOrWhiteSpace(key))
-            {
-                throw new ArgumentNullException(nameof(key));
-            }
-
-            using (var client = this.redisManager.GetClient() as IRedisNativeClient)
-            {
-                if (client.Exists(key) == 1)
-                {
-                    result = client.Get(key);
-                }
-            }
-
-            return result;
+            return this.Get<byte[]>(key);
         }
 
         /// <summary>
@@ -87,7 +73,14 @@ namespace Vasont.AspnetCore.ServiceStackRedis.Cache
             {
                 if (client.ContainsKey(key))
                 {
-                    result = client.Get<T>(key);
+                    var entry = client.Get<RedisDistributedCacheEntry<T>>(key);
+
+                    if (entry != null)
+                    {
+                        result = entry.Value;
+                    }
+
+                    this.Refresh(key);
                 }
             }
 
@@ -154,17 +147,28 @@ namespace Vasont.AspnetCore.ServiceStackRedis.Cache
                 throw new ArgumentNullException(nameof(options));
             }
 
+            var creationTime = DateTimeOffset.UtcNow;
+
+            var absoluteExpiration = this.GetAbsoluteExpiration(creationTime, options);
+
             using (var client = this.redisManager.GetClient())
             {
-                var expireInSeconds = this.GetExpireInSeconds(options);
-                
-                if (expireInSeconds > 0)
+                var entry = new RedisDistributedCacheEntry<T>
+                            {
+                                    Value = value,
+                                    AbsoluteExpiration = absoluteExpiration?.Ticks,
+                                    SlidingExpiration = options.SlidingExpiration?.Ticks
+                            };
+
+                var expiresIn = this.GetExpirationInSeconds(creationTime, absoluteExpiration, options);
+
+                if (expiresIn.HasValue)
                 {
-                    client.Set(key, value, TimeSpan.FromSeconds(expireInSeconds));
+                    client.Set(key, entry, TimeSpan.FromSeconds(expiresIn.Value));
                 }
                 else
                 {
-                    client.Set(key, value);
+                    client.Set(key, entry);
                 }
             }
         }
@@ -203,7 +207,33 @@ namespace Vasont.AspnetCore.ServiceStackRedis.Cache
         /// <param name="key">Contains a cache storage key</param>
         public void Refresh(string key)
         {
-            // TODO: Implement Sliding expiration
+            using (var client = this.redisManager.GetClient())
+            {
+                if (client.ContainsKey(key))
+                {
+                    var entry = client.Get<RedisDistributedCacheEntry>(key);
+
+                    this.MapMetadata(entry, out DateTimeOffset? absoluteExpiration, out TimeSpan? slidingExpiration);
+
+                    // Note Refresh has no effect if there is just an absolute expiration (or neither).
+                    if (slidingExpiration.HasValue)
+                    {
+                        TimeSpan expiration;
+
+                        if (absoluteExpiration.HasValue)
+                        {
+                            var relativeExpiration = absoluteExpiration.Value - DateTimeOffset.UtcNow;
+                            expiration = relativeExpiration <= slidingExpiration.Value ? relativeExpiration : slidingExpiration.Value;
+                        }
+                        else
+                        {
+                            expiration = slidingExpiration.Value;
+                        }
+
+                        client.ExpireEntryIn(key, expiration);
+                    }
+                }
+            }
         }
 
         /// <summary>
@@ -245,7 +275,6 @@ namespace Vasont.AspnetCore.ServiceStackRedis.Cache
             return Task.Run(() => this.Remove(key), token);
         }
 
-
         /// <summary>
         /// This method is used for generation expiration key
         /// </summary>
@@ -285,31 +314,82 @@ namespace Vasont.AspnetCore.ServiceStackRedis.Cache
 
         #endregion
 
-        #region Private Methods
+        #region Private methods
 
         /// <summary>
-        /// This method is used to get expiration value in seconds
+        /// This method is used to get the absolute expiration date time offset.
         /// </summary>
-        /// <param name="options">Contains the distributed cache options.</param>
-        /// <returns>Returns the expiration in seconds.</returns>
-        private int GetExpireInSeconds(DistributedCacheEntryOptions options)
+        /// <param name="creationTime">Contains the creation time.</param>
+        /// <param name="options">Contains cache entry options.</param>
+        /// <returns>Returns the absolute expiration date time offset.</returns>
+        private DateTimeOffset? GetAbsoluteExpiration(DateTimeOffset creationTime, DistributedCacheEntryOptions options)
         {
-            int result = 0;
+            if (options.AbsoluteExpiration.HasValue && options.AbsoluteExpiration <= creationTime)
+            {
+                throw new ArgumentOutOfRangeException(nameof(DistributedCacheEntryOptions.AbsoluteExpiration), options.AbsoluteExpiration.Value, "Expiration Date must be in the future");
+            }
 
-            if (options.SlidingExpiration.HasValue)
+            var absoluteExpiration = options.AbsoluteExpiration;
+
+            if (options.AbsoluteExpirationRelativeToNow.HasValue)
             {
-                result = (int)options.SlidingExpiration.Value.TotalSeconds;
+                absoluteExpiration = creationTime + options.AbsoluteExpirationRelativeToNow;
             }
-            else if (options.AbsoluteExpiration.HasValue)
+
+            return absoluteExpiration;
+        }
+
+        /// <summary>
+        /// This method is used to get expiration in seconds.
+        /// </summary>
+        /// <param name="creationTime">Contains the creation time.</param>
+        /// <param name="absoluteExpiration">Contains the absolute expiration date.</param>
+        /// <param name="options">Contains cache entry options.</param>
+        /// <returns>Returns the number of seconds before expiration.</returns>
+        private double? GetExpirationInSeconds(DateTimeOffset creationTime, DateTimeOffset? absoluteExpiration, DistributedCacheEntryOptions options)
+        {
+            double? result = null;
+
+            if (absoluteExpiration.HasValue && options.SlidingExpiration.HasValue)
             {
-                result = (int)(options.AbsoluteExpiration.Value - DateTimeOffset.Now).TotalSeconds;
+                result = Math.Min((absoluteExpiration.Value - creationTime).TotalSeconds, options.SlidingExpiration.Value.TotalSeconds);
             }
-            else if (options.AbsoluteExpirationRelativeToNow.HasValue)
+            else if (absoluteExpiration.HasValue)
             {
-                result = (int)options.AbsoluteExpirationRelativeToNow.Value.TotalSeconds;
+                result = (absoluteExpiration.Value - creationTime).TotalSeconds;
+            }
+            else if (options.SlidingExpiration.HasValue)
+            {
+                result = options.SlidingExpiration.Value.TotalSeconds;
             }
 
             return result;
+        }
+
+        /// <summary>
+        /// This method is used to map metadata.
+        /// </summary>
+        /// <param name="entry">Contains the redis entry value.</param>
+        /// <param name="absoluteExpiration">Contains an absolute expiration value.</param>
+        /// <param name="slidingExpiration">Contains a sliding expiration value.</param>
+        private void MapMetadata(RedisDistributedCacheEntry entry, out DateTimeOffset? absoluteExpiration, out TimeSpan? slidingExpiration)
+        {
+            absoluteExpiration = null;
+            slidingExpiration = null;
+
+            var absoluteExpirationTicks = entry.AbsoluteExpiration;
+
+            if (absoluteExpirationTicks.HasValue)
+            {
+                absoluteExpiration = new DateTimeOffset(absoluteExpirationTicks.Value, TimeSpan.Zero);
+            }
+
+            var slidingExpirationTicks = entry.SlidingExpiration;
+
+            if (slidingExpirationTicks.HasValue)
+            {
+                slidingExpiration = new TimeSpan(slidingExpirationTicks.Value);
+            }
         }
 
         #endregion
