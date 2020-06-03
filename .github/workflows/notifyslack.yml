@@ -1,5 +1,5 @@
 # Action communicates with Slack on any push pull_request
-name: CI
+name: Notify Slack
 
 # Controls when the action will run. Triggers the workflow on any push or pull request
 on: [push, pull_request]
