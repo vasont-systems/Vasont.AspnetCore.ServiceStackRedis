@@ -18,15 +18,6 @@ namespace Vasont.AspnetCore.ServiceStackRedis.Cache
     /// </summary>
     public class RedisDistributedCache : IDistributedCache
     {
-        #region Private Readonly Properties
-
-        /// <summary>
-        /// Contains a Redis Manager
-        /// </summary>
-        private readonly IRedisClientsManager redisManager;
-
-        #endregion
-
         #region Private constants
 
         /// <summary>
@@ -48,6 +39,15 @@ namespace Vasont.AspnetCore.ServiceStackRedis.Cache
         /// Contains a not present value.
         /// </summary>
         private const long NotPresent = -1;
+
+        #endregion
+
+        #region Private Readonly Properties
+
+        /// <summary>
+        /// Contains a Redis Manager
+        /// </summary>
+        private readonly IRedisClientsManager redisManager;
 
         #endregion
 
@@ -93,11 +93,11 @@ namespace Vasont.AspnetCore.ServiceStackRedis.Cache
 
             using (var client = this.redisManager.GetClient())
             {
-                var typedClient = client.As<T>();
-                var redisHash = typedClient.GetHash<string>(key);
-
-                if (typedClient.ContainsKey(key))
+                if (client.ContainsKey(key))
                 {
+                    var typedClient = client.As<T>();
+                    var redisHash = typedClient.GetHash<string>(key);
+
                     result = typedClient.GetValueFromHash(redisHash, DataKey);
                     this.Refresh(key);
                 }
@@ -235,7 +235,7 @@ namespace Vasont.AspnetCore.ServiceStackRedis.Cache
                     var absoluteExpirationTicks = typedLongClient.GetValueFromHash(redisLongHash, AbsoluteExpirationKey);
                     var slidingExpirationTicks = typedLongClient.GetValueFromHash(redisLongHash, SlidingExpirationKey);
 
-                    MapMetadata(absoluteExpirationTicks, slidingExpirationTicks, out var absoluteExpiration, out var slidingExpiration);
+                    this.MapMetadata(absoluteExpirationTicks, slidingExpirationTicks, out var absoluteExpiration, out var slidingExpiration);
 
                     // Note Refresh has no effect if there is just an absolute expiration (or neither).
                     if (slidingExpiration.HasValue)
@@ -294,7 +294,7 @@ namespace Vasont.AspnetCore.ServiceStackRedis.Cache
         /// <returns>Returns the task to execute.</returns>
         public Task RemoveAsync(string key, CancellationToken token = default)
         {
-            return Task.Run(() => Remove(key), token);
+            return Task.Run(() => this.Remove(key), token);
         }
 
         /// <summary>
