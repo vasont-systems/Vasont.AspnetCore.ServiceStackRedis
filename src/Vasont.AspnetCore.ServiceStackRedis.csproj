@@ -10,11 +10,13 @@
     <RepositoryUrl>https://github.com/vasont-systems/Vasont.AspnetCore.ServiceStackRedis</RepositoryUrl>
     <RepositoryType>git</RepositoryType>
     <PackageTags>Cache</PackageTags>
-    <PackageReleaseNotes>Removed setting extra items with expiration date</PackageReleaseNotes>
+    <PackageReleaseNotes>Added sliding expiration support.</PackageReleaseNotes>
     <PackageProjectUrl>https://github.com/vasont-systems/Vasont.AspnetCore.ServiceStackRedis</PackageProjectUrl>
     <Copyright>Copyright (c) 2020, GlobalLink Vasont.</Copyright>
     <PackageLicenseExpression>Apache-2.0</PackageLicenseExpression>
-    <Version>1.1.2</Version>
+    <Version>1.1.3</Version>
+    <AssemblyVersion>1.1.3.0</AssemblyVersion>
+    <FileVersion>1.1.3.0</FileVersion>
   </PropertyGroup>
 
   <ItemGroup>
